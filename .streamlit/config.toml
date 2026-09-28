@@ -1,0 +1,7 @@
+# Course Pulse theme (dashboard.py; also applies to app.py)
+[theme]
+base = "light"
+primaryColor = "#0D6B73"
+backgroundColor = "#F4F6F5"
+secondaryBackgroundColor = "#EEF2F0"
+textColor = "#111B18"

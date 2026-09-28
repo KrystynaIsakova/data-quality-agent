@@ -53,10 +53,20 @@ class ResultStore:
     tables: dict[str, dict] = field(default_factory=dict)   # overview facts per table
     questions: list[str] = field(default_factory=list)
     exchanges: list[Exchange] = field(default_factory=list)
+    # What the current run (one subagent call) touched; the store stays cumulative.
+    _run_keys: set[tuple] = field(default_factory=set)
+    _run_tables: set[str] = field(default_factory=set)
+
+    def begin_run(self) -> None:
+        """Start tracking a new run; earlier results stay in the store."""
+        self._run_keys.clear()
+        self._run_tables.clear()
 
     def add(self, result: CheckResult) -> None:
         """Add a result; re-running the same check replaces the old result."""
         self._results[result.key] = result
+        self._run_keys.add(result.key)
+        self._run_tables.add(result.table)
 
     def discard(self, key: tuple) -> None:
         """Drop a result that a re-run no longer produces."""
@@ -64,6 +74,14 @@ class ResultStore:
 
     def set_fact(self, table: str, name: str, value) -> None:
         self.tables.setdefault(table, {})[name] = value
+        self._run_tables.add(table)
+
+    def run_results(self) -> list[CheckResult]:
+        """Results added or replaced since begin_run()."""
+        return [r for k, r in self._results.items() if k in self._run_keys]
+
+    def run_tables(self) -> list[str]:
+        return sorted(self._run_tables)
 
     def add_exchange(self, request: str, answer: str, questions: list[str]) -> None:
         self.exchanges.append(Exchange(request, answer))

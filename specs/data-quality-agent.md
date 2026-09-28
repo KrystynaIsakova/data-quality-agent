@@ -31,9 +31,11 @@
 ## 3. Архітектура
 
 ```
-app.py (Streamlit) ─┐
-                    ├─► session.py ─► agent.py (Gemini chat, automatic function calling)
-main.py (CLI) ──────┘        │                    │
+app.py (Streamlit) ─┐                        інший агент (оркестратор)
+                    ├─► session.py ──┐                  │ check_tables() / run()
+main.py (CLI) ──────┘                ▼                  ▼
+                        subagent.py (DataQualitySubagent) ─► agent.py (Gemini chat)
+                             │                    │
                              │                    ▼
                              │               tools.py ─► schema.py (whitelist)
                              │                    │
@@ -50,7 +52,8 @@ main.py (CLI) ──────┘        │                    │
 | Модуль | Відповідальність |
 |---|---|
 | `config.py` | Читання `.env` при кожному старті сесії; `Settings.redact()` для секретів |
-| `session.py` | Спільна для обох UI сесія: старт, `ask()`, запис звіту |
+| `subagent.py` | `DataQualitySubagent`: старт, `check_tables()` (без LLM), `run()` (Gemini), структурований `QualityResult`, запис звіту |
+| `session.py` | Тонка обгортка для обох UI: `Session.ask()` повертає текст і питання, повний результат у `last_result` |
 | `agent.py` | Gemini-чат, system prompt, розбір блоку `QUESTIONS:` |
 | `tools.py` | 5 тулів; побудова SQL; запис `CheckResult` |
 | `schema.py` | Whitelist таблиць і колонок з `information_schema` |
@@ -59,6 +62,76 @@ main.py (CLI) ──────┘        │                    │
 | `db.py` | Read-only з'єднання, таймаут, ліміт рядків |
 | `results.py` | `CheckResult`, `ResultStore`, логіка ALL PASS |
 | `report.py` | Детермінований рендер Markdown-звіту |
+
+### 3.1. Контракт сабагента (виклик з іншого агента)
+
+`DataQualitySubagent` викликається in-process, доступ до БД лише read-only (ті самі три рівні захисту).
+
+```python
+dq = DataQualitySubagent.create(llm=False)          # llm=True відкриває ще й Gemini-чат
+result = dq.check_tables(["enrollments"], checks=["count", "out_of_range"])
+result = dq.run("перевір progress_pct")             # природна мова, потрібен llm=True
+result.to_dict()                                     # JSON-серіалізований dict
+```
+
+- `check_tables(tables, checks=None)`: детерміновано викликає тули `describe`, `count`, `missing`, `duplicates`, `out_of_range` (за замовчуванням усі). Таблиці без правил у `ranges.yaml` потрапляють у `skipped`.
+- `run(request)`: запит через Gemini. Помилки не піднімаються, а повертаються як `status = "ERROR"` (секрети замасковано).
+- `QualityResult`: `status` (`PASS` / `FAIL` / `NO_CHECKS` / `ERROR`), `all_pass`, `tables`, `confirmed` / `possible` / `passed` / `info` (словники `CheckResult` + `target`, `section`), `facts`, `questions`, `skipped`, `errors`, `summary`, `report_path`.
+- Результат містить лише перевірки **цього виклику** (`ResultStore.begin_run()`), а сховище і звіт залишаються накопичувальними.
+- Класифікація та сама, що в розділі 7: `confirmed` лише для `basis == "rule"`.
+
+### 3.2. KPI-тули (`dq_agent/kpis.py`)
+
+Детерміновані функції для метрик із `semantic_layer.yaml`. Файл лише читається і змінюється тільки аналітиком. Модуль не залежить від агентів і Gemini: LLM KPI не рахує, лише викликає функції. Кожне значення рахує один агрегатний SELECT через `run_select`, тобто проходить `sql_guard` і read-only сесію.
+
+| Функція | Метрика | Колонки | SQL (`f` = `enrollments`) |
+|---|---|---|---|
+| `total_enrollments(run_select, by=None)` | `total_enrollments` | `enrollment_id` | `COUNT(f.enrollment_id)` |
+| `average_progress(run_select, by=None)` | `average_progress` | `progress_pct` | `AVG(f.progress_pct)`; `n` = кількість не-NULL |
+| `completion_rate(run_select, by=None)` | `completion_rate` | `completed_at`, `enrollment_id` | `COUNT(CASE WHEN f.completed_at IS NOT NULL THEN 1 END) * 100.0 / NULLIF(COUNT(f.enrollment_id), 0)` |
+
+- `by="course"` групує за `enrollments.course_url` без join.
+- `by="specialization"` робить `LEFT JOIN` на `SELECT DISTINCT course_url, specialization_url FROM dim_course`, щоб дублікати в `dim_course` не множили рядки. Курс, що входить у кілька спеціалізацій, рахується в кожній. Курси, яких немає в `dim_course`, потрапляють у групу `None`.
+- Результат: `metric`, `description`, `definition`, `calculation` (текст з YAML), `table`, `unit`, `by`, а також `value` і `n`, або з `by` натомість `rows` і `truncated`. Значення округлюються до 2 знаків.
+- `calculation` з YAML не вставляється в SQL. SQL кожної метрики записаний у `kpis.METRICS`, а `tests/test_kpis.py` перевіряє, що агрегати з YAML є в SQL і що таблиці та колонки існують у схемі.
+- `* 100.0` дає десяткове ділення: цілочисельне `COUNT / COUNT` у PostgreSQL обрізало б результат до 0. Це реалізація формули з YAML, а не зміна визначення.
+
+### 3.3. Analytics Orchestrator (`dq_agent/orchestrator.py`, `analyst.py`)
+
+Gemini-агент для аналітичних питань. LLM лише обирає метрику та вимір і формулює відповідь. KPI він не рахує.
+
+Тули оркестратора:
+- `list_kpis()`: метрики й виміри з `semantic_layer.yaml`. Каталог також вбудовано в system prompt.
+- `get_kpi(metric, by=None)`: весь конвеєр у Python.
+  1. Визначення метрики з `semantic_layer.yaml`.
+  2. Потрібні таблиці й колонки: `kpis.METRICS[...]["columns"]`, для `by` ще `course_url`, для `specialization` ще `dim_course.course_url` і `specialization_url`.
+  3. `DataQualitySubagent.check_tables(table, ["missing", "duplicates", "out_of_range"])`, кеш на сесію для кожної таблиці.
+  4. Фільтр висновків до потрібних колонок (плюс табличні висновки, як-от дублікати повного рядка).
+  5. `kpis.calculate_kpi`.
+
+  Повертає `kpi`, `required_data` і `data_quality` (`status`: `PASS` / `WARN` / `FAIL` / `ERROR`, `warnings` із `severity` `confirmed` / `possible`).
+- `check_data_quality(tables)`: для питань лише про якість даних.
+
+Інше:
+- `Orchestrator.ask(question)` повертає `OrchestratorReply(text, kpi_results, warnings)`. `kpi_results` — точні виходи KPI-функцій, і UI друкує їх поруч із текстом моделі.
+- Для моделі розбивка обрізається до 30 рядків (`rows_total` / `rows_shown`), а повний результат лишається в `kpi_results`.
+- Одне read-only з'єднання: сабагент створюється з `llm=False`, а KPI-запити йдуть через його `db.run_select`.
+- Невідома метрика чи вимір, а також помилки БД повертаються моделі як `{"error": ...}` (секрети замасковано).
+
+### 3.4. Дашборд (`dashboard.py`)
+
+Лише шар представлення над Orchestrator: окремий екземпляр на кожну вкладку браузера, одне read-only з'єднання.
+
+| Компонент | Джерело |
+|---|---|
+| Картки KPI, заголовок-інсайт | `Orchestrator.kpi_report(metric)`: перевірки DQ, потім SQL, без Gemini. Інсайт — шаблон зі значень тулів. |
+| Позначка довіри на KPI | `kpi_report(...)["data_quality"]` (попередження, відфільтровані до колонок KPI) |
+| Графік | `kpi_report(metric, by="specialization" \| "course")`. Дашборд лише сортує, обирає top-N і відсікає групи з менш ніж 500 записами. |
+| Data health, діалог «View all checks» | `Orchestrator.data_health(tables)` з результатами Data Quality Subagent. Таблиці беруться з метрик і вимірів у `semantic_layer.yaml`. |
+| Ask your data | `Orchestrator.ask()`: текст моделі, точні значення з `kpi_results`, попередження. Помилки 429 і 503 показуються як «Gemini is busy». |
+| Визначення метрик | `orch.layer` (`semantic_layer.yaml`, лише читання) |
+
+Тренд за місяцями, дельти «vs last year» і спарклайни з макета не реалізовано: у семантичному шарі немає часового виміру, а `enrolled_at` зберігається як text.
 
 ## 4. Функціональні вимоги
 
@@ -181,7 +254,7 @@ keys:
 
 - Ліміт автоматичних викликів тулів — 25 на запит (`MAX_TOOL_CALLS`).
 - Помилки Gemini чи БД під час запиту не завершують сесію: користувач бачить повідомлення й може продовжити.
-- У Streamlit кожна вкладка браузера має власну сесію. Запити серіалізуються глобальним lock, бо контекст тулів — глобальний для модуля.
+- У Streamlit кожна вкладка браузера має власну сесію. Запити серіалізуються `tools.use(ctx)` (реентерабельний `RLock`, відновлює попередній контекст), бо контекст тулів — глобальний для модуля. Тому оркестратор може викликати сабагент зсередини свого тула в тому ж потоці.
 
 ## 10. Критерії приймання
 
@@ -196,6 +269,10 @@ keys:
 | AC-7 | Секрети не потрапляють у звіт і помилки; зміни `.env` підхоплюються | `tests/test_report.py`, `tests/test_session.py`, `tests/test_config.py` |
 | AC-8 | Веб-інтерфейс: запит → відповідь, тули, звіт, помилки | `tests/test_app.py` (AppTest з фейковою сесією) |
 | AC-9 | Згенерований SQL синтаксично валідний для PostgreSQL | разова перевірка парсером `pglast` (81 запит) |
+| AC-11 | Сабагент повертає JSON-сумісний результат лише поточного виклику; помилки не піднімаються | `tests/test_subagent.py` |
+| AC-12 | KPI рахуються SQL за визначеннями з `semantic_layer.yaml`; розбіжність коду і YAML ламає тест | `tests/test_kpis.py` |
+| AC-13 | Оркестратор перевіряє якість потрібних даних до розрахунку KPI, фільтрує попередження до колонок KPI і повертає точні значення тулів | `tests/test_orchestrator.py` |
+| AC-14 | Дашборд не рахує KPI і не має власної DQ-логіки: імпортує лише `dq_agent.orchestrator` / `dq_agent.subagent` | `tests/test_dashboard.py` |
 | AC-10 | Наскрізний запуск на реальній БД і Gemini створює звіт без секретів і ID | **ручна перевірка користувачем**, ще не виконана |
 
 Команда для автоматичних тестів: `pytest` (без БД і Gemini).

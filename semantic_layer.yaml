@@ -1,0 +1,39 @@
+# semantic_layer.yaml
+# Business definitions used by the Analytics Agent.
+# These definitions are approved by the analyst and should not be
+# changed automatically by the LLM.
+
+metrics:
+
+  total_enrollments:
+    description: Total number of course enrollments
+    table: enrollments
+    calculation: COUNT(enrollment_id)
+
+  average_progress:
+    description: Average progress across course enrollments
+    table: enrollments
+    column: progress_pct
+    calculation: AVG(progress_pct)
+
+  completion_rate:
+    description: Percentage of enrollments that completed a course
+    table: enrollments
+    definition: >
+      An enrollment is considered completed when completed_at IS NOT NULL.
+    calculation: >
+      COUNT(CASE WHEN completed_at IS NOT NULL THEN 1 END)
+      / COUNT(enrollment_id) * 100
+
+
+dimensions:
+
+  course:
+    description: Course
+    table: dim_course
+    key: course_url
+
+  specialization:
+    description: Specialization
+    table: dim_course
+    key: specialization_url

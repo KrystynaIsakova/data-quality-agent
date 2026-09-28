@@ -1,21 +1,33 @@
-# Data Quality Agent
+# Course Pulse: аналітичний агент для даних курсу
 
-Агент (веб-інтерфейс і термінал), який перевіряє якість даних у PostgreSQL-базі курсу (Coursera). Ви пишете запит звичайною мовою, **Gemini** обирає потрібні Python-тули, тули виконують **лише агрегатні SELECT-запити**, а результат зберігається в `reports/data_quality_report.md`.
+Course Pulse відповідає на аналітичні питання про дані курсу (Coursera, PostgreSQL) і показує, чи можна довіряти цифрам. Він складається з трьох частин:
+
+- **KPI-тули** рахують метрики SQL-запитами за затвердженими визначеннями з `semantic_layer.yaml`.
+- **Data Quality Subagent** перевіряє дані, з яких рахуються KPI: пропуски, дублікати, значення поза межами.
+- **Orchestrator** (Gemini) розуміє питання, обирає метрику й пояснює результат. Сам він цифр не рахує.
+
+Головний інтерфейс — дашборд у Streamlit. Доступ до БД лише на читання.
 
 Повна специфікація: [specs/data-quality-agent.md](specs/data-quality-agent.md).
 
-Методологія перенесена з skill `validate-dataset`: профілювання → правила з `rules/` → звіт, у якому розділені **підтверджені проблеми**, **припущення** і **питання до бізнесу**.
+## Швидкий старт
 
-## Встановлення
+### 1. Що потрібно
+
+- Python 3.11 або новіший
+- доступ до PostgreSQL-бази курсу (рядок підключення `postgresql://…`)
+- ключ Gemini API з [Google AI Studio](https://aistudio.google.com/apikey); безкоштовного тарифу достатньо
+
+### 2. Встановлення
 
 ```bash
 python3 -m venv .venv
-source .venv/bin/activate
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-cp .env.example .env      # і заповнити
+cp .env.example .env
 ```
 
-`.env`:
+### 3. Налаштування `.env`
 
 | Змінна | Опис |
 |---|---|
@@ -23,31 +35,100 @@ cp .env.example .env      # і заповнити
 | `GEMINI_MODEL` | необов'язково, за замовчуванням `gemini-2.5-flash` |
 | `DATABASE_URL` | `postgresql://USER:PASSWORD@HOST:5432/DBNAME` |
 
-`.env` ігнорується git. Пароль і `DATABASE_URL` не потрапляють у код, звіти чи повідомлення про помилки.
+`.env` ігнорується git. Пароль і `DATABASE_URL` не потрапляють у код, звіти чи повідомлення про помилки. Краще підключатися користувачем БД, який має лише права на читання.
 
-## Запуск
-
-Веб-інтерфейс (текстове поле, історія чату, вкладка зі звітом, кнопка завантаження звіту):
+### 4. Перевірка встановлення (необов'язково)
 
 ```bash
-streamlit run app.py
+python -m pytest
 ```
 
-Термінал:
+Тести не потребують ні БД, ні Gemini. Якщо всі пройшли, код і залежності встановлено правильно.
+
+### 5. Запуск дашборду
 
 ```bash
-python main.py
+source .venv/bin/activate
+streamlit run dashboard.py
 ```
 
-Приклади запитів:
+Відкрийте http://localhost:8501. Перше завантаження триває кілька секунд: агент підключається до БД, перевіряє якість даних у `enrollments` і `dim_course` та рахує KPI. Далі результати кешуються для вкладки браузера. Зупинити сервер: `Ctrl+C` у терміналі.
+
+### Що на екрані
+
+| Блок | Що показує | Звідки дані |
+|---|---|---|
+| Головний інсайт | одне речення про стан бізнесу | значення KPI-тулів |
+| Картки KPI | Total enrollments, Completion rate, Average progress; позначка «Verified» або кількість проблем з даними; визначення метрики | KPI-тули + Data Quality Subagent |
+| Графік | метрика за спеціалізацією або курсом; перемикачі метрики й виміру; фільтр «500+ enrollments» | KPI-тули |
+| Ask your data | відповідь агента, точні значення, попередження, «How this was calculated» | Orchestrator |
+| Data health | скільки перевірок пройдено, головні проблеми, «View all checks» | Data Quality Subagent |
+
+Кнопка **Refresh data** починає нову сесію: заново запускає перевірки й перераховує KPI.
+
+Приклади питань для «Ask your data»:
+
+- `Which specializations complete most?`
+- `What is the average progress by course?`
+- `Яка частка завершених курсів?`
+- `Can I trust the completion rate?`
+
+Агент відповідає лише про метрики з `semantic_layer.yaml`. На питання на кшталт «What is our revenue?» він відповість, що такої метрики немає, і нічого не вигадуватиме.
+
+## Інші способи запуску
+
+| Команда | Для чого |
+|---|---|
+| `streamlit run dashboard.py` | **дашборд Course Pulse** (основний продукт) |
+| `python analyst.py` | аналітичні питання в терміналі: той самий Orchestrator, точні значення друкуються окремо від тексту моделі |
+| `streamlit run app.py` | чат про якість даних (Data Quality Agent) зі звітом `reports/data_quality_report.md` |
+| `python main.py` | той самий чат про якість даних у терміналі |
+
+Приклади запитів для чату про якість даних:
 
 - `перевір таблицю enrollments` — усі перевірки для таблиці
 - `чи є дублікати в weekly_activity?`
 - `які значення поза діапазоном у payments?`
-- `перевір пропуски в колонках country і plan таблиці users`
 - `перевір, чи quiz_score у weekly_activity між 0 і 10` — власні межі (вважаються припущенням)
 
-У терміналі `exit` або `quit` завершує роботу, у веб-інтерфейсі кнопка «Нова сесія» починає нову. Звіт перезаписується після кожної відповіді й містить усі перевірки поточної сесії.
+У терміналі `exit` або `quit` завершує роботу. Звіт про якість даних перезаписується після кожної перевірки, зокрема й тих, які запускає дашборд.
+
+## Якщо щось не працює
+
+| Повідомлення | Що робити |
+|---|---|
+| `Configuration error: Missing environment variables` | Створіть `.env` з `.env.example` і заповніть `GEMINI_API_KEY` і `DATABASE_URL`, потім перезавантажте сторінку. |
+| `Cannot connect to the database` | Перевірте `DATABASE_URL`, мережу чи VPN і те, що БД доступна з вашого комп'ютера. |
+| `Gemini is busy right now` | Безкоштовний тариф Gemini дозволяє близько 5 запитів на хвилину, а одне питання використовує 2–3. Зачекайте хвилину. KPI і Data health працюють без Gemini. |
+| `ModuleNotFoundError: No module named 'dq_agent'` під час тестів | Запускайте `python -m pytest`, а не просто `pytest`. |
+| Порт 8501 зайнятий | `streamlit run dashboard.py --server.port 8502` |
+
+## Використання з коду
+
+KPI і перевірки без Gemini:
+
+```python
+from dq_agent.orchestrator import Orchestrator
+
+orch = Orchestrator.create()
+report = orch.kpi_report("completion_rate", by="specialization")
+report["kpi"]["rows"]              # значення з SQL
+report["data_quality"]["status"]   # PASS / WARN / FAIL / ERROR
+orch.close()
+```
+
+Лише перевірки якості даних (Data Quality Subagent):
+
+```python
+from dq_agent.subagent import DataQualitySubagent
+
+dq = DataQualitySubagent.create(llm=False)
+result = dq.check_tables(["enrollments"])
+result.to_dict()                   # JSON для іншого агента
+dq.close()
+```
+
+Контракти описано в `specs/data-quality-agent.md`, розділи 3.1–3.4.
 
 ## Тули
 
@@ -86,6 +167,6 @@ python main.py
 ## Тести
 
 ```bash
-pytest                                   # без БД і без Gemini
-pytest tests/test_sql_guard.py -k blocks  # окремий набір
+python -m pytest                                   # без БД і без Gemini
+python -m pytest tests/test_sql_guard.py -k blocks  # окремий набір
 ```

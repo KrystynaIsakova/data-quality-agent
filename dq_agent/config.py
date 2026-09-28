@@ -11,6 +11,7 @@ ENV_PATH = PROJECT_ROOT / ".env"
 RULES_DIR = PROJECT_ROOT / "rules"
 METHODOLOGY_PATH = PROJECT_ROOT / "docs" / "methodology.md"
 REPORT_PATH = PROJECT_ROOT / "reports" / "data_quality_report.md"
+SEMANTIC_LAYER_PATH = PROJECT_ROOT / "semantic_layer.yaml"
 
 DEFAULT_MODEL = "gemini-2.5-flash"
 REQUIRED_VARIABLES = ("GEMINI_API_KEY", "DATABASE_URL")

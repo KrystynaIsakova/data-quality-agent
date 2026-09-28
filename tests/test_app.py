@@ -3,6 +3,7 @@ import pytest
 from streamlit.testing.v1 import AppTest
 
 import dq_agent.session as session_module
+import dq_agent.subagent as subagent_module
 from dq_agent import tools
 from dq_agent.agent import AgentReply
 from dq_agent.config import PROJECT_ROOT, Settings
@@ -31,7 +32,7 @@ class FakeDatabase:
 
 @pytest.fixture
 def fake_start(schema, rules, tmp_path, monkeypatch):
-    monkeypatch.setattr(session_module, "REPORT_PATH", tmp_path / "data_quality_report.md")
+    monkeypatch.setattr(subagent_module, "REPORT_PATH", tmp_path / "data_quality_report.md")
 
     def start(on_tool_call=print):
         settings = Settings(gemini_api_key="k", database_url="postgresql://u:p@h/db")

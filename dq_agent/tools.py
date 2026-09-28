@@ -8,8 +8,10 @@ Gemini reads each tool's signature and docstring as its description. Every tool:
 - records its results in the ResultStore used by the report.
 """
 import functools
+import threading
+from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Callable
+from typing import Callable, Iterator
 from decimal import Decimal
 
 import psycopg
@@ -48,11 +50,27 @@ class ToolContext:
 
 
 _ctx: ToolContext | None = None
+# Tools read their context from the module global above, so calls from several
+# sessions (e.g. two browser tabs) must not interleave. Reentrant, so an
+# orchestrator's tool call can invoke the subagent in the same thread.
+_LOCK = threading.RLock()
 
 
-def configure(ctx: ToolContext) -> None:
+def configure(ctx: ToolContext | None) -> None:
     global _ctx
     _ctx = ctx
+
+
+@contextmanager
+def use(ctx: ToolContext) -> Iterator[ToolContext]:
+    """Run tools with ctx; restore the previous context afterwards."""
+    with _LOCK:
+        previous = _ctx
+        configure(ctx)
+        try:
+            yield ctx
+        finally:
+            configure(previous)
 
 
 def _context() -> ToolContext:

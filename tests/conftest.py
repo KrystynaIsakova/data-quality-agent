@@ -1,12 +1,14 @@
 import pytest
 from psycopg import sql
 
+from dq_agent import subagent as subagent_module
 from dq_agent import tools
-from dq_agent.config import RULES_DIR
+from dq_agent.config import RULES_DIR, Settings
 from dq_agent.results import ResultStore
 from dq_agent.rules import Rules
 from dq_agent.schema import Column, Schema
 from dq_agent.sql_guard import assert_safe_select
+from dq_agent.subagent import DataQualitySubagent
 
 # Snapshot of information_schema.columns (schema public), taken via the
 # course-db MCP server during development. Column types only, no data.
@@ -82,3 +84,27 @@ def setup_tools(schema, rules):
         return db, store
     yield factory
     tools.configure(None)
+
+
+class FakeDatabase:
+    """Stands in for db.Database; queries go to a FakeDB."""
+
+    def __init__(self, run_select=None):
+        self.run_select = run_select
+
+    def close(self):
+        pass
+
+
+@pytest.fixture
+def make_subagent(schema, rules, tmp_path, monkeypatch):
+    monkeypatch.setattr(subagent_module, "REPORT_PATH", tmp_path / "report.md")
+
+    def factory(respond, agent=None):
+        db = FakeDB(respond)
+        store = ResultStore()
+        ctx = tools.ToolContext(db.run_select, schema, rules, store, lambda line: None)
+        settings = Settings(gemini_api_key="key123", database_url="postgresql://u:s3cret@h/db")
+        sub = DataQualitySubagent(settings, FakeDatabase(db.run_select), schema, rules, [], store, ctx, agent)
+        return sub, db
+    return factory

@@ -1,6 +1,6 @@
 import pytest
 
-from dq_agent import session as session_module
+from dq_agent import subagent as subagent_module
 from dq_agent import tools
 from dq_agent.agent import AgentReply
 from dq_agent.config import Settings
@@ -37,7 +37,7 @@ def make_session(schema, rules, agent):
 @pytest.fixture
 def report_path(tmp_path, monkeypatch):
     path = tmp_path / "data_quality_report.md"
-    monkeypatch.setattr(session_module, "REPORT_PATH", path)
+    monkeypatch.setattr(subagent_module, "REPORT_PATH", path)
     return path
 
 
