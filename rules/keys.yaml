@@ -1,0 +1,21 @@
+# Keys used by check_duplicates (validate-dataset: at least 4 duplicate slices).
+#
+# id      - surrogate ID column; must be unique and non-NULL (violation = CONFIRMED issue)
+# natural - natural key that must identify one row (violation = CONFIRMED issue)
+
+keys:
+  enrollments:
+    id: enrollment_id
+    natural: [user_id, course_id]
+  users:
+    id: user_id
+  payments:
+    id: payment_id
+  reviews:
+    id: review_id
+  dim_course:
+    id: course_id
+  weekly_activity:
+    natural: [enrollment_id, week_number]
+  review_link:
+    natural: [enrollment_id, review_id]

@@ -1,0 +1,59 @@
+# Allowed ranges for numeric columns, used by check_out_of_range.
+#
+# basis:
+#   rule       - proven/agreed rule; a violation is a CONFIRMED issue (report section 1)
+#   assumption - plausible heuristic; a violation is a POSSIBLE issue (report section 2)
+# min / max are inclusive; omit one of them for a one-sided bound.
+# Sources: validate-dataset skill (ranges step), db-quality-check skill,
+# lesson3 rules/enrollments_cleaning_rules.md (R3: progress_pct stub 104).
+
+ranges:
+  # enrollments
+  - {table: enrollments, column: progress_pct, min: 0, max: 100, basis: rule,
+     note: "Percentage. lesson3 R3 found a stub value 104 recomputable as last_week_reached / n_weeks * 100."}
+  - {table: enrollments, column: last_week_reached, min: 0, basis: rule,
+     note: "A week counter cannot be negative."}
+  - {table: enrollments, column: n_weeks, min: 1, basis: rule,
+     note: "A course has at least one week."}
+  - {table: enrollments, column: is_certified, min: 0, max: 1, basis: rule,
+     note: "Boolean flag stored as 0/1."}
+  - {table: enrollments, column: course_no, min: 1, basis: assumption,
+     note: "Position of the course inside a specialization; numbering is assumed to start at 1."}
+
+  # payments
+  - {table: payments, column: amount_usd, min: 0, basis: rule,
+     note: "A payment amount cannot be negative (refunds are flagged by is_refunded)."}
+  - {table: payments, column: is_refunded, min: 0, max: 1, basis: rule,
+     note: "Boolean flag stored as 0/1."}
+
+  # reviews
+  - {table: reviews, column: stars, min: 1, max: 5, basis: rule,
+     note: "Star rating scale is 1-5."}
+
+  # weekly_activity
+  - {table: weekly_activity, column: week_number, min: 1, basis: rule,
+     note: "Weeks are numbered from 1."}
+  - {table: weekly_activity, column: minutes_watched, min: 0, basis: rule,
+     note: "Watched minutes cannot be negative."}
+  - {table: weekly_activity, column: quiz_attempts, min: 0, basis: rule,
+     note: "Attempt counter cannot be negative."}
+  - {table: weekly_activity, column: quiz_score, min: 0, max: 100, basis: assumption,
+     note: "Scale is not documented; 0-100 is assumed. Question for the business."}
+
+  # dim_course
+  - {table: dim_course, column: n_weeks, min: 1, basis: rule,
+     note: "A course has at least one week."}
+  - {table: dim_course, column: total_minutes, min: 0, basis: rule,
+     note: "Duration cannot be negative."}
+  - {table: dim_course, column: minutes_per_week, min: 0, basis: rule,
+     note: "Duration cannot be negative."}
+  - {table: dim_course, column: video_min, min: 0, basis: rule,
+     note: "Duration cannot be negative."}
+  - {table: dim_course, column: practice_min, min: 0, basis: rule,
+     note: "Duration cannot be negative."}
+  - {table: dim_course, column: mean_stars, min: 1, max: 5, basis: assumption,
+     note: "Assumed to be the mean of 1-5 star reviews."}
+  - {table: dim_course, column: review_score, min: 0, max: 5, basis: assumption,
+     note: "Assumed to be on a 0-5 rating scale."}
+  - {table: dim_course, column: pct_low, min: 0, max: 100, basis: assumption,
+     note: "Share of low reviews; scale (0-1 or 0-100) is not documented. Question for the business."}
