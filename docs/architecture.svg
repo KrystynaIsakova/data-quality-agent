@@ -1,0 +1,149 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 570" width="960" height="570" role="img" aria-labelledby="t d">
+  <title id="t">How Course Pulse answers a KPI question</title>
+  <desc id="d">The user asks through the dashboard. The Gemini Orchestrator picks the metric and calls get_kpi. In Python, get_kpi reads the definition from semantic_layer.yaml, finds the required tables and columns, runs the Data Quality Subagent, then calculates the KPI with SQL. All queries go through read-only database access. The answer returns with exact values and data-quality warnings.</desc>
+  <style>
+    .bg { fill: #F4F6F5; }
+    .box { fill: #FFFFFF; stroke: #D5DDD9; stroke-width: 1.2; }
+    .frame { fill: none; stroke: #B9C5C0; stroke-width: 1.2; stroke-dasharray: 5 4; }
+    .band { fill: #E8EDEB; stroke: #D5DDD9; stroke-width: 1.2; }
+    .llm { fill: #EEEBF8; stroke: #6B5CB5; stroke-width: 1.4; }
+    .dq { fill: #FBF0DC; stroke: #A96C12; stroke-width: 1.4; }
+    .kpi { fill: #E1EFEF; stroke: #0D6B73; stroke-width: 1.4; }
+    .db { fill: #0D6B73; }
+    .t { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; fill: #111B18; }
+    .h { font-size: 14px; font-weight: 700; }
+    .s { font-size: 12px; fill: #4A5752; }
+    .m { font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 11.5px; fill: #4A5752; }
+    .lbl { font-size: 11px; fill: #7E8A85; letter-spacing: 0.06em; }
+    .cap { font-size: 11px; fill: #4A5752; }
+    .w { fill: #FFFFFF; }
+    .ln { stroke: #4A5752; stroke-width: 1.5; fill: none; }
+    .ah { fill: #4A5752; }
+    .c-llm { fill: #6B5CB5; }
+    .c-dq { fill: #A96C12; }
+    .c-kpi { fill: #0D6B73; }
+    @media (prefers-color-scheme: dark) {
+      .bg { fill: #0E1412; }
+      .box { fill: #151D1A; stroke: #2E3A35; }
+      .frame { stroke: #3E4B46; }
+      .band { fill: #1B2522; stroke: #2E3A35; }
+      .llm { fill: #25213D; stroke: #A596EA; }
+      .dq { fill: #33281A; stroke: #E2AA4C; }
+      .kpi { fill: #173033; stroke: #56B8BE; }
+      .db { fill: #56B8BE; }
+      .t { fill: #E6ECE9; }
+      .s, .m, .cap { fill: #A9B5B0; }
+      .lbl { fill: #7C8984; }
+      .w { fill: #0E1412; }
+      .ln { stroke: #A9B5B0; }
+      .ah { fill: #A9B5B0; }
+      .c-llm { fill: #A596EA; }
+      .c-dq { fill: #E2AA4C; }
+      .c-kpi { fill: #56B8BE; }
+    }
+  </style>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 Z" class="ah"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="960" height="570" rx="14"/>
+
+  <!-- Row 1: user, UI, orchestrator -->
+  <rect class="box" x="20" y="36" width="180" height="92" rx="10"/>
+  <text class="t h" x="36" y="62">You ask</text>
+  <text class="t s" x="36" y="84">“What is the completion</text>
+  <text class="t s" x="36" y="100">rate by specialization?”</text>
+
+  <rect class="box" x="260" y="36" width="180" height="92" rx="10"/>
+  <text class="t h" x="276" y="62">Course Pulse</text>
+  <text class="t m" x="276" y="84">dashboard.py</text>
+  <text class="t m" x="276" y="101">analyst.py</text>
+
+  <rect class="llm" x="500" y="36" width="440" height="92" rx="10"/>
+  <text class="t h" x="516" y="62">Orchestrator · Gemini</text>
+  <text class="t s" x="516" y="84">Picks the metric and dimension, then explains the result.</text>
+  <text class="t s" x="516" y="101">Never calculates numbers: values come only from the tools.</text>
+
+  <line class="ln" x1="202" y1="70" x2="256" y2="70" marker-end="url(#a)"/>
+  <line class="ln" x1="258" y1="98" x2="204" y2="98" marker-end="url(#a)"/>
+  <line class="ln" x1="442" y1="70" x2="496" y2="70" marker-end="url(#a)"/>
+  <line class="ln" x1="498" y1="98" x2="444" y2="98" marker-end="url(#a)"/>
+  <text class="t cap" x="230" y="62" text-anchor="middle">question</text>
+  <text class="t cap" x="230" y="114" text-anchor="middle">answer</text>
+  <text class="t cap" x="470" y="62" text-anchor="middle">question</text>
+  <text class="t cap" x="470" y="114" text-anchor="middle">answer</text>
+
+  <!-- Orchestrator <-> pipeline -->
+  <line class="ln" x1="640" y1="130" x2="640" y2="176" marker-end="url(#a)"/>
+  <text class="t m" x="650" y="157">get_kpi(metric, by)</text>
+  <line class="ln" x1="880" y1="176" x2="880" y2="130" marker-end="url(#a)"/>
+  <text class="t cap" x="870" y="157" text-anchor="end">KPI + warnings</text>
+
+  <!-- get_kpi pipeline -->
+  <rect class="frame" x="20" y="178" width="920" height="190" rx="12"/>
+  <text class="t lbl" x="36" y="200">GET_KPI PIPELINE · PYTHON, NO LLM</text>
+
+  <rect class="box" x="40" y="214" width="200" height="136" rx="10"/>
+  <text class="t h" x="56" y="240">1 · Definition</text>
+  <text class="t m" x="56" y="263">semantic_layer.yaml</text>
+  <text class="t s" x="56" y="284">table, column, formula</text>
+  <text class="t s" x="56" y="301">approved by the analyst</text>
+  <text class="t s" x="56" y="318">read-only</text>
+
+  <rect class="box" x="265" y="214" width="200" height="136" rx="10"/>
+  <text class="t h" x="281" y="240">2 · Required data</text>
+  <text class="t s" x="281" y="263">tables and columns</text>
+  <text class="t s" x="281" y="280">this KPI will read</text>
+  <text class="t m" x="281" y="301">enrollments</text>
+  <text class="t m" x="281" y="318">dim_course</text>
+
+  <rect class="dq" x="490" y="214" width="200" height="136" rx="10"/>
+  <text class="t h" x="506" y="240">3 · Data Quality</text>
+  <text class="t h" x="506" y="257">Subagent</text>
+  <text class="t s" x="506" y="280">missing values, duplicates,</text>
+  <text class="t s" x="506" y="297">out-of-range values</text>
+  <text class="t m" x="506" y="318">rules/*.yaml</text>
+  <text class="t s" x="506" y="337">→ confirmed / possible</text>
+
+  <rect class="kpi" x="715" y="214" width="205" height="136" rx="10"/>
+  <text class="t h" x="731" y="240">4 · KPI tools</text>
+  <text class="t m" x="731" y="263">kpis.calculate_kpi</text>
+  <text class="t s" x="731" y="284">one aggregate SQL query</text>
+  <text class="t s" x="731" y="301">per metric; overall or</text>
+  <text class="t s" x="731" y="318">by course / specialization</text>
+
+  <line class="ln" x1="242" y1="282" x2="261" y2="282" marker-end="url(#a)"/>
+  <line class="ln" x1="467" y1="282" x2="486" y2="282" marker-end="url(#a)"/>
+  <line class="ln" x1="692" y1="282" x2="711" y2="282" marker-end="url(#a)"/>
+
+  <!-- to database -->
+  <line class="ln" x1="590" y1="352" x2="590" y2="420" marker-end="url(#a)"/>
+  <line class="ln" x1="817" y1="352" x2="817" y2="420" marker-end="url(#a)"/>
+  <text class="t m" x="600" y="394">SELECT</text>
+  <text class="t m" x="827" y="394">SELECT</text>
+
+  <!-- read-only access band -->
+  <rect class="band" x="20" y="422" width="920" height="82" rx="12"/>
+  <text class="t lbl" x="36" y="444">READ-ONLY DATABASE ACCESS · EVERY QUERY</text>
+  <rect class="box" x="40" y="456" width="200" height="32" rx="7"/>
+  <text class="t s" x="140" y="477" text-anchor="middle">sql_guard: one SELECT only</text>
+  <rect class="box" x="265" y="456" width="200" height="32" rx="7"/>
+  <text class="t s" x="365" y="477" text-anchor="middle">schema whitelist</text>
+  <rect class="box" x="490" y="456" width="200" height="32" rx="7"/>
+  <text class="t s" x="590" y="477" text-anchor="middle">read-only session, 30 s limit</text>
+  <rect class="db" x="715" y="456" width="205" height="32" rx="7"/>
+  <text class="t h w" x="817" y="477" text-anchor="middle">PostgreSQL</text>
+  <line class="ln" x1="242" y1="472" x2="261" y2="472" marker-end="url(#a)"/>
+  <line class="ln" x1="467" y1="472" x2="486" y2="472" marker-end="url(#a)"/>
+  <line class="ln" x1="692" y1="472" x2="711" y2="472" marker-end="url(#a)"/>
+
+  <!-- legend -->
+  <rect class="c-llm" x="20" y="530" width="12" height="12" rx="3"/>
+  <text class="t cap" x="38" y="540">LLM: understands and explains</text>
+  <rect class="c-dq" x="232" y="530" width="12" height="12" rx="3"/>
+  <text class="t cap" x="250" y="540">Data quality: can the numbers be trusted?</text>
+  <rect class="c-kpi" x="492" y="530" width="12" height="12" rx="3"/>
+  <text class="t cap" x="510" y="540">Calculation: SQL computes every value</text>
+</svg>

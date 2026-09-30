@@ -8,6 +8,19 @@ Course Pulse відповідає на аналітичні питання пр�
 
 Головний інтерфейс — дашборд у Streamlit. Доступ до БД лише на читання.
 
+![Як Course Pulse відповідає на питання про KPI: Orchestrator обирає метрику, get_kpi у Python бере визначення з semantic_layer.yaml, перевіряє дані через Data Quality Subagent і рахує KPI SQL-запитом через read-only доступ до БД](docs/architecture.svg)
+
+Як це працює на прикладі питання «What is the completion rate by specialization?»:
+
+1. **Orchestrator (Gemini)** розуміє питання й обирає метрику `completion_rate` і вимір `specialization`. Далі він лише викликає `get_kpi`.
+2. **Визначення** береться з `semantic_layer.yaml`: завершеним вважається запис, у якому `completed_at IS NOT NULL`.
+3. **Потрібні дані**: колонки `enrollments` і `dim_course`, з яких рахуватиметься KPI.
+4. **Data Quality Subagent** перевіряє саме ці колонки: пропуски, дублікати, значення поза межами з `rules/*.yaml`.
+5. **KPI-тули** рахують значення одним SQL-запитом.
+6. Відповідь містить точні значення з SQL, попередження про якість даних і визначення метрики. Модель їх лише пояснює.
+
+Усі запити проходять `sql_guard` (лише один SELECT), whitelist схеми й read-only сесію.
+
 Повна специфікація: [specs/data-quality-agent.md](specs/data-quality-agent.md).
 
 ## Швидкий старт
